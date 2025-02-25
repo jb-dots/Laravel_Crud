@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\DB;
 
 class ProductController extends Controller
 {
@@ -98,5 +99,54 @@ class ProductController extends Controller
     
         // Redirect to the dashboard with a success message
         return redirect()->route('dashboard')->with('success', 'Product deleted successfully!');
+    }
+    public function checkout(Request $request)
+    {
+        // Validate the request
+        $request->validate([
+            'cart' => 'required|json',
+        ]);
+
+        // Decode the cart data
+        $cart = json_decode($request->input('cart'), true);
+
+        // Start a database transaction
+        DB::beginTransaction();
+
+        try {
+            // Example: Save the order to the database
+            $order = DB::table('orders')->insertGetId([
+                'total_amount' => array_reduce($cart, function ($sum, $item) {
+                    return $sum + ($item['price'] * $item['quantity']);
+                }, 0),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            // Save each item in the cart as an order item
+            foreach ($cart as $item) {
+                DB::table('order_items')->insert([
+                    'order_id' => $order,
+                    'product_name' => $item['name'],
+                    'price' => $item['price'],
+                    'quantity' => $item['quantity'],
+                    'total_price' => $item['price'] * $item['quantity'],
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+
+            // Commit the transaction
+            DB::commit();
+
+            // Redirect with a success message
+            return redirect()->route('dashboard')->with('success', 'Order placed successfully!');
+        } catch (\Exception $e) {
+            // Rollback the transaction on error
+            DB::rollBack();
+
+            // Redirect with an error message
+            return redirect()->route('dashboard')->with('error', 'Failed to place the order. Please try again.');
+        }
     }
 }
